@@ -21,7 +21,9 @@ jobs:
         test -f Dockerfile && echo "Dockerfile FOUND" || echo "Dockerfile MISSING"
 
     - name: Build Docker image
-      run: docker build --file Dockerfile -t ${{ secrets.DOCKER_USERNAME }}/interview-backend:latest .
+      run: |
+        docker build -f Dockerfile -t ${{ secrets.DOCKER_USERNAME }}/interview-backend:latest .
+        
     - name: Push Docker image
       run: docker push ${{ secrets.DOCKER_USERNAME }}/interview-backend:latest
 
