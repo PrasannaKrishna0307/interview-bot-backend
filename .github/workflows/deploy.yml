@@ -27,7 +27,7 @@ jobs:
         context: .
         file: ./Dockerfile
         push: true
-        tags: prasannakrishna0305/interview-backend:latest
+        tags: ${{ secrets.DOCKER_USERNAME }}/interview-backend:latest
 
     - name: Deploy on Azure VM
       uses: appleboy/ssh-action@v1.0.0
@@ -36,12 +36,12 @@ jobs:
         username: ${{ secrets.VM_USER }}
         key: ${{ secrets.VM_SSH_KEY }}
         script: |
-          docker pull prasannakrishna0305/interview-backend:latest
+          docker pull ${{ secrets.DOCKER_USERNAME }}/interview-backend:latest
           docker stop interview-backend || true
           docker rm interview-backend || true
           docker run -d \
           --name interview-backend \
           -p 8001:8000 \
           --restart unless-stopped \
-          prasannakrishna0305/interview-backend:latest
+          ${{ secrets.DOCKER_USERNAME }}/interview-backend:latest
 
