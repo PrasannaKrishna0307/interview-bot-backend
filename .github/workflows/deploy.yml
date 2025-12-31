@@ -14,16 +14,14 @@ jobs:
     - name: Login to Docker Hub
       run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
-     - name: Verify Dockerfile exist
-       run: |
-          pwd
-          ls -la
-          test -f Dockerfile && echo "Dockerfile FOUND" || echo "Dockerfile MISSING"
+    - name: Verify Dockerfile exists
+      run: |
+        pwd
+        ls -la
+        test -f Dockerfile && echo "Dockerfile FOUND" || echo "Dockerfile MISSING"
 
     - name: Build Docker image
       run: docker build --file Dockerfile -t ${{ secrets.DOCKER_USERNAME }}/interview-backend:latest .
-
-      
     - name: Push Docker image
       run: docker push ${{ secrets.DOCKER_USERNAME }}/interview-backend:latest
 
