@@ -27,7 +27,7 @@ jobs:
         context: .
         file: ./Dockerfile
         push: true
-        tags: ${{ secrets.DOCKER_USERNAME }}/interview-backend:latest
+        tags: prasannakrishna0305/interview-backend:latest
 
     - name: Deploy on Azure VM
       uses: appleboy/ssh-action@v1.0.0
