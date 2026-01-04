@@ -70,7 +70,7 @@ security = HTTPBearer()
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Restrict to frontend origin
+    allow_origins=["chrome-extension://jonnmcjmdjdjgpnbgpmjdcjcfccconml"],  # Restrict to frontend origin
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -138,6 +138,12 @@ async def startup_db():
             print(f"⚠️ MongoDB connection failed: {e}. Using in-memory storage.")
     else:
         print("⚠️ No MONGODB_URI set. Using in-memory storage.")
+    
+    # Debug: Print all registered routes
+    print("🔍 Registered Routes:")
+    for route in app.routes:
+        if hasattr(route, "path"):
+            print(f"   {route.methods} {route.path}")
 
 @app.on_event("shutdown")
 async def shutdown_db():
@@ -1179,9 +1185,6 @@ async def get_user_stats(user=Depends(get_authenticated_user)):
 async def health_check():
     return {"status": "healthy", "mongodb": "connected" if db is not None else "in-memory"}
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 class WarningRequest(BaseModel):
     type: str  # "tab_switch", "fullscreen_exit", "copy_paste", "multiple_faces"
@@ -1189,7 +1192,7 @@ class WarningRequest(BaseModel):
     details: Optional[str] = None
 
 @app.post("/api/interview/{session_id}/warning")
-async def report_warning(session_id: str, warning: WarningRequest, user=Depends(get_current_user)):
+async def report_warning(session_id: str, warning: WarningRequest, user=Depends(get_authenticated_user)):
     """Report a proctoring warning/incident for a session"""
     
     # Verify session belongs to user
@@ -1241,3 +1244,19 @@ async def report_warning(session_id: str, warning: WarningRequest, user=Depends(
         session["incidents"].append(incident)
         
         return {"success": True, "message": "Warning logged"}
+
+@app.get("/")
+async def root():
+    return {"message": "API is running"}
+
+if __name__ == "__main__":
+    import uvicorn
+    
+    print("----- REGISTERED ROUTES START -----")
+    for route in app.routes:
+        if hasattr(route, "path"):
+            print(f"Route: {route.methods} {route.path}")
+    print("----- REGISTERED ROUTES END -----")
+
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
