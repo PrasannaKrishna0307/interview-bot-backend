@@ -43,5 +43,8 @@ jobs:
           --name interview-backend \
           -p 8001:8000 \
           --restart unless-stopped \
+          -e MONGODB_URI="${{ secrets.MONGODB_URI }}" \
+          -e JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
+          -e ENVIRONMENT="production" \
           ${{ secrets.DOCKER_USERNAME }}/interview-backend:latest
 
