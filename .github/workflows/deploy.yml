@@ -45,6 +45,10 @@ jobs:
           --restart unless-stopped \
           -e MONGODB_URI="${{ secrets.MONGODB_URI }}" \
           -e JWT_SECRET_KEY="${{ secrets.JWT_SECRET_KEY }}" \
+          -e AZURE_OPENAI_KEY="${{ secrets.AZURE_OPENAI_KEY }}" \
+          -e AZURE_OPENAI_BASE="${{ secrets.AZURE_OPENAI_BASE }}" \
+          -e AZURE_OPENAI_CHAT_DEPLOYMENT="${{ secrets.AZURE_OPENAI_CHAT_DEPLOYMENT }}" \
+          -e AZURE_OPENAI_API_VERSION="2025-01-01-preview" \
           -e ENVIRONMENT="production" \
           ${{ secrets.DOCKER_USERNAME }}/interview-backend:latest
 
