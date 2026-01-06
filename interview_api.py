@@ -70,7 +70,11 @@ security = HTTPBearer()
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["chrome-extension://jonnmcjmdjdjgpnbgpmjdcjcfccconml"],  # Restrict to frontend origin
+    allow_origins=[
+        "chrome-extension://fgndickcgoheijcbjcpicgjofcfcjkol",
+        "http://localhost:3000",
+        "http://localhost:3001"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -1200,9 +1204,12 @@ async def report_warning(session_id: str, warning: WarningRequest, user=Depends(
         session = await db.sessions.find_one({"session_id": session_id})
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
+        user_id = user.get("_id") if isinstance(user, dict) else None
+        if not user or "_id" not in user:
+            raise HTTPException(status_code=401, detail="Invalid user")
         if session.get("user_id") and session["user_id"] != str(user["_id"]):
-             raise HTTPException(status_code=403, detail="Not authorized for this session")
-        
+            raise HTTPException(status_code=403, detail="Not authorized for this session")
+
         # Update session with warning
         incident = {
             "type": warning.type,
@@ -1259,4 +1266,5 @@ if __name__ == "__main__":
     print("----- REGISTERED ROUTES END -----")
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
 
