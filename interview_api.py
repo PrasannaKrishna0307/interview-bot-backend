@@ -781,13 +781,16 @@ async def respond_to_question(request: RespondRequest, user=Depends(get_authenti
     # Determine if we need a clarifying question (Low score + max 2 retries)
     clarification_count = session.get("clarification_count", 0)
     
+    print(f"🧐 CONFIG CHECK: Clarification Logic -> Score: {quality_score}, Count: {clarification_count}")
+
     next_question = ""
     source = ""
     stage = session.get("current_stage", 1)
     next_q_num = current_q + 1
     
-    # If answer is poor (<= 4) and we haven't reached max retries (2)
-    if quality_score <= 4 and clarification_count < 2:
+    # If answer is poor (<= 5) and we haven't reached max retries (2)
+    if quality_score <= 5 and clarification_count < 2:
+        print(f"⚠️ Triggering Clarification! (Attempt {clarification_count + 1})")
         analysis = session.get("resume_analysis", {})
         clarifying_q = await generate_clarifying_question(
             original_question=current_question_text,
@@ -805,10 +808,12 @@ async def respond_to_question(request: RespondRequest, user=Depends(get_authenti
             # Increment counter
             session["clarification_count"] = clarification_count + 1
         else:
+            print("❌ Clarification generation failed (None returned). Moving to next question.")
             # Fallback if generation fails - treat as technical/behavioral and move on
             q_type = "technical" if stage in [1, 2] else "behavioral"
             session["clarification_count"] = 0 # Reset
     else:
+        print("✅ Answer accepted (or max retries). Moving to next question.")
         # Good answer OR max retries reached -> Move to next
         session["clarification_count"] = 0 # Reset counter
 
