@@ -768,15 +768,135 @@ async def respond_to_question(request: RespondRequest, user=Depends(get_authenti
     # Add feedback based on AI evaluation
     feedback = ""
     if feedback_text:
-        feedback = f"{feedback_text} "
+        feedback = feedback_text
     elif quality_score > 7:
-        feedback = "Great answer! I appreciate the detail you provided. "
+        feedback = "Great answer! I appreciate the detail you provided."
     elif quality_score > 4:
-        feedback = "Good response. "
+        feedback = "Good response."
     else:
-        feedback = "Thank you for your answer. "
+        feedback = "Thank you for your answer."
     
-    full_question = f"{feedback}{next_question}"
+    # Determine if we need a clarifying question (Low score + not already in a clarification loop)
+    # Check if last question was a clarification to avoid infinite loops
+    last_question_type = "standard"
+    if session.get("questions_asked"):
+        last_question_type = session["questions_asked"][-1].get("type", "standard")
+
+    next_question = ""
+    source = ""
+    stage = session.get("current_stage", 1)
+    next_q_num = current_q + 1
+    
+    # If answer is poor (<= 4) and we haven't just asked a clarifying question, ask for clarification
+    if quality_score <= 4 and last_question_type != "clarification":
+        analysis = session.get("resume_analysis", {})
+        clarifying_q = await generate_clarifying_question(
+            original_question=current_question_text,
+            candidate_answer=response_text,
+            resume_context=analysis
+        )
+        if clarifying_q:
+            next_question = clarifying_q
+            next_q_num = current_q # Remain on same number
+            source = "ai_clarification"
+            q_type = "clarification"
+            # Adjust feedback to be encouraging
+            feedback = f"{feedback} Let's dig a little deeper."
+        else:
+            # Fallback if generation fails
+            q_type = "technical" if stage in [1, 2] else "behavioral"
+    
+    # If no clarification needed (formatted as standard flow)
+    if not next_question:
+        # Generate next question (AI first, fallback static)
+        # Recalculate stage based on next_q_num
+        stage = 1 if next_q_num <= 5 else 2 if next_q_num <= 10 else 3
+        
+        analysis = session.get("resume_analysis", {})
+        previous_questions_text = [q.get("text", "") for q in session.get("questions_asked", [])]
+        hr_technical: List[str] = []
+        hr_behavioral: List[str] = []
+        if db is not None:
+            try:
+                async for qs in db.question_sets.find({"isActive": True}):
+                    qs_questions = qs.get("questions", [])
+                    cat = qs.get("category", "").lower()
+                    
+                    # Determine target list based on category
+                    target_list = hr_technical
+                    if any(k in cat for k in ["hr", "behavioral", "soft", "culture", "person"]):
+                        target_list = hr_behavioral
+                    
+                    for q in qs_questions:
+                        if isinstance(q, dict) and "text" in q:
+                            target_list.append(q["text"])
+                        elif isinstance(q, str):
+                            target_list.append(q)
+            except Exception:
+                pass
+
+        question_type = "resume" if stage == 1 else "general" if stage == 2 else "hr"
+        
+        # Select pools
+        relevant_hr_questions = []
+        if question_type == "general":
+            relevant_hr_questions = hr_technical
+        elif question_type == "hr":
+            relevant_hr_questions = hr_behavioral
+
+        ai_question = await generate_ai_question(
+            resume_analysis=analysis,
+            question_type=question_type,
+            question_number=next_q_num,
+            previous_questions=previous_questions_text,
+            hr_questions=relevant_hr_questions,
+        )
+
+        if ai_question:
+            next_question = ai_question["question"]
+            source = ai_question.get("source", question_type)
+        else:
+            if stage == 1:
+                projects = analysis.get("projects", [])
+                skills = analysis.get("technical_skills", {})
+                questions_pool = [
+                    f"Tell me about your experience with {list(skills.get('frameworks', ['web development']))[0] if isinstance(skills.get('frameworks'), list) and skills.get('frameworks') else 'web development'}.",
+                    f"Can you walk me through one of your projects - {projects[0] if projects else 'a recent project'}?",
+                    "What was the most challenging technical problem you've solved?",
+                    "How do you approach learning new technologies?",
+                    "Describe a time when you had to debug a complex issue."
+                ]
+                # Safe index access
+                idx = min(max(0, next_q_num - 1), len(questions_pool) - 1)
+                next_question = questions_pool[idx]
+                source = "resume"
+            elif stage == 2:
+                questions_pool = [
+                    "Explain the difference between REST and GraphQL APIs.",
+                    "How would you design a scalable microservices architecture?",
+                    "What are the key principles of clean code?",
+                    "Describe your approach to testing software.",
+                    "How do you handle database optimization?"
+                ]
+                idx = min(max(0, next_q_num - 6), len(questions_pool) - 1)
+                next_question = questions_pool[idx]
+                source = "general"
+            else:
+                questions_pool = [
+                    "Tell me about a time you had a conflict with a team member. How did you resolve it?",
+                    "Where do you see yourself in 5 years?",
+                    "What motivates you in your work?",
+                    "Describe a situation where you had to meet a tight deadline.",
+                    "Why are you interested in this position?"
+                ]
+                idx = min(max(0, next_q_num - 11), len(questions_pool) - 1)
+                next_question = questions_pool[idx]
+                source = "hr"
+        
+        q_type = "technical" if stage in [1, 2] else "behavioral"
+    
+    # Do not prepend feedback to the question text
+    full_question = next_question
     
     # Update session
     session["question_count"] = next_q_num
@@ -791,7 +911,8 @@ async def respond_to_question(request: RespondRequest, user=Depends(get_authenti
     })
     session["conversation_history"].append({
         "role": "assistant",
-        "content": full_question
+        # Save both feedback and question in history for context
+        "content": f"{feedback} {next_question}"
     })
     
     await save_session(request.session_id, session)
@@ -1309,5 +1430,4 @@ if __name__ == "__main__":
     print("----- REGISTERED ROUTES END -----")
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
 
