@@ -100,6 +100,7 @@ def normalize_session(session: Dict[str, Any]) -> Dict[str, Any]:
     session.setdefault("question_count", 0)
     session.setdefault("current_stage", 0)
     session.setdefault("retry_count", 0)
+    session.setdefault("clarification_count", 0)
     session.setdefault("answers", [])
     return session
 
@@ -529,6 +530,7 @@ async def start_interview(request: StartInterviewRequest, user=Depends(get_authe
     session.setdefault("responses", [])
     session.setdefault("answers", [])
     session.setdefault("total_questions", 15)
+    session["clarification_count"] = 0 # Ensure clean start
 
     # Generate opening question based on resume analysis
     analysis = session.get("resume_analysis", {})
@@ -776,19 +778,16 @@ async def respond_to_question(request: RespondRequest, user=Depends(get_authenti
     else:
         feedback = "Thank you for your answer."
     
-    # Determine if we need a clarifying question (Low score + not already in a clarification loop)
-    # Check if last question was a clarification to avoid infinite loops
-    last_question_type = "standard"
-    if session.get("questions_asked"):
-        last_question_type = session["questions_asked"][-1].get("type", "standard")
-
+    # Determine if we need a clarifying question (Low score + max 2 retries)
+    clarification_count = session.get("clarification_count", 0)
+    
     next_question = ""
     source = ""
     stage = session.get("current_stage", 1)
     next_q_num = current_q + 1
     
-    # If answer is poor (<= 4) and we haven't just asked a clarifying question, ask for clarification
-    if quality_score <= 4 and last_question_type != "clarification":
+    # If answer is poor (<= 4) and we haven't reached max retries (2)
+    if quality_score <= 4 and clarification_count < 2:
         analysis = session.get("resume_analysis", {})
         clarifying_q = await generate_clarifying_question(
             original_question=current_question_text,
@@ -802,9 +801,17 @@ async def respond_to_question(request: RespondRequest, user=Depends(get_authenti
             q_type = "clarification"
             # Adjust feedback to be encouraging
             feedback = f"{feedback} Let's dig a little deeper."
+            
+            # Increment counter
+            session["clarification_count"] = clarification_count + 1
         else:
-            # Fallback if generation fails
+            # Fallback if generation fails - treat as technical/behavioral and move on
             q_type = "technical" if stage in [1, 2] else "behavioral"
+            session["clarification_count"] = 0 # Reset
+    else:
+        # Good answer OR max retries reached -> Move to next
+        session["clarification_count"] = 0 # Reset counter
+
     
     # If no clarification needed (formatted as standard flow)
     if not next_question:
