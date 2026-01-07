@@ -219,21 +219,63 @@ async def extract_resume_data(text: str) -> Dict[str, Any]:
     return {}
 
 
-async def evaluate_response(question: str, answer: str) -> Dict[str, Any]:
-    # ... (docstring) ...
+
+async def generate_clarifying_question(
+    original_question: str,
+    candidate_answer: str,
+    resume_context: Dict[str, Any]
+) -> Optional[str]:
+    """
+    Generates a follow-up question when the candidate's answer is poor.
+    """
     if not _is_configured():
-         # ... (fallback logic unchanged) ...
+        return "Could you elaborate on that a bit more? specifically regarding your role?"
+
+    skills = _flatten_skills(resume_context)
+    
+    system_prompt = (
+        "You are a helpful interviewer. The candidate gave a vague or incomplete answer. "
+        "Ask a follow-up question to encourage them to provide more specific details, "
+        "examples, or reasoning. Do NOT simply ask 'Can you explain more?'. "
+        "Be specific about what is missing based on the original question. "
+        "Keep it encouraging but firm on getting a technical answer."
+    )
+    
+    user_prompt = (
+        f"Original Question: {original_question}\n"
+        f"Candidate Answer: {candidate_answer}\n"
+        f"Candidate Skills Context: {', '.join(skills[:10])}\n"
+        f"Generate a clarifying follow-up question."
+    )
+
+    return await _call_azure_openai(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        max_tokens=150,
+    )
+
+
+async def evaluate_response(question: str, answer: str) -> Dict[str, Any]:
+    """
+    Evaluates the answer and returns a score (1-10), feedback, and detected skills.
+    """
+    if not _is_configured():
+        # Fallback Mock Logic
         wc = len(answer.split())
         return {
             "quality_score": min(10, max(1, wc // 5)),
-            "feedback": "Good effort (Mock Evaluation).",
+            "feedback": "Thank you for sharing that.",
             "detected_skills": [],
             "confidence": "low"
         }
 
     system_prompt = (
         "You are a technical interviewer. Evaluate the candidate's answer. "
-        "Return ONLY JSON: { \"quality_score\": number, \"feedback\": string, \"detected_skills\": [string] }"
+        "Return ONLY JSON: { \"quality_score\": number, \"feedback\": string, \"detected_skills\": [string] } "
+        "Score: 1-10. Feedback should be constructive, specific, and brief (2 sentences max). "
+        "If the answer is irrelevant or very poor, give a low score (1-3)."
     )
     
     user_prompt = f"Question: {question}\nCandidate Answer: {answer}"
@@ -260,11 +302,12 @@ async def evaluate_response(question: str, answer: str) -> Dict[str, Any]:
             print(f"[ai] JSON parse error in evaluation: {e}")
             print(f"[ai] Raw response was: {response[:200]}...")
 
-    # Default fallback on failure
+    # Default fallback on failure - Neutral message instead of error
     return {
-        "quality_score": 5,
-        "feedback": "Unable to evaluate response at this time.",
+        "quality_score": 5, 
+        "feedback": "Thank you for your response.",
         "detected_skills": [],
         "confidence": "low"
     }
+
 

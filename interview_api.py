@@ -18,7 +18,7 @@ import tempfile
 import shutil
 import pdfplumber
 from passlib.context import CryptContext
-from ai_engine import generate_ai_question, extract_resume_data, evaluate_response
+from ai_engine import generate_ai_question, extract_resume_data, evaluate_response, generate_clarifying_question
 from report_engine import generate_report_summary
 
 # Load environment variables
@@ -99,6 +99,7 @@ def normalize_session(session: Dict[str, Any]) -> Dict[str, Any]:
     session.setdefault("total_questions", 15)
     session.setdefault("question_count", 0)
     session.setdefault("current_stage", 0)
+    session.setdefault("retry_count", 0)
     session.setdefault("answers", [])
     return session
 
@@ -639,6 +640,48 @@ async def respond_to_question(request: RespondRequest, user=Depends(get_authenti
             "total_questions": total_q,
             "report": session["report"],
         }
+    
+    # === Retry Logic for Poor Answers ===
+    retry_count = session.get("retry_count", 0)
+    
+    # If answer is poor (score < 5) and we haven't retried 2 times yet
+    if quality_score < 5 and retry_count < 2:
+        print(f"⚠️ Poor answer (Score: {quality_score}). Triggering clarification (Retry {retry_count + 1}/2)")
+        
+        clarifying_q = await generate_clarifying_question(
+            original_question=current_question_text,
+            candidate_answer=response_text,
+            resume_context=session.get("resume_analysis", {})
+        )
+        
+        if clarifying_q:
+            # Increment retry count but keep same question number
+            session["retry_count"] = retry_count + 1
+            
+            # Add to history
+            full_response = f"{feedback_text or 'I see.'} {clarifying_q}"
+            session["conversation_history"].append({
+                "role": "assistant",
+                "content": full_response
+            })
+            
+            await save_session(request.session_id, session)
+            
+            return {
+                "question": full_response,
+                "question_number": current_q, # Stay on same question
+                "stage": session.get("current_stage", 1),
+                "total_questions": total_q,
+                "feedback": feedback_text, # Show feedback but ask to clarify
+                "analysis": {
+                    "quality_score": quality_score,
+                    "detected_skills": detected_skills,
+                    "confidence_level": "low"
+                }
+            }
+            
+    # Reset retry count if we are moving to next question
+    session["retry_count"] = 0
     
     # Generate next question (AI first, fallback static)
     next_q_num = current_q + 1
