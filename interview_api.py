@@ -797,21 +797,20 @@ async def respond_to_question(request: RespondRequest, user=Depends(get_authenti
             candidate_answer=response_text,
             resume_context=analysis
         )
-        if clarifying_q:
-            next_question = clarifying_q
-            next_q_num = current_q # Remain on same number
-            source = "ai_clarification"
-            q_type = "clarification"
-            # Adjust feedback to be encouraging
-            feedback = f"{feedback} Let's dig a little deeper."
+        if not clarifying_q:
+            print("❌ Clarification generation failed. Using fallback.")
+            # Fallback static clarification
+            clarifying_q = "Could you please elaborate more on that answer? Providing specific details would really help."
             
-            # Increment counter
-            session["clarification_count"] = clarification_count + 1
-        else:
-            print("❌ Clarification generation failed (None returned). Moving to next question.")
-            # Fallback if generation fails - treat as technical/behavioral and move on
-            q_type = "technical" if stage in [1, 2] else "behavioral"
-            session["clarification_count"] = 0 # Reset
+        next_question = clarifying_q
+        next_q_num = current_q # Remain on same number
+        source = "ai_clarification_fallback"
+        q_type = "clarification"
+        # Adjust feedback to be encouraging
+        feedback = f"{feedback} Let's dig a little deeper."
+        
+        # Increment counter
+        session["clarification_count"] = clarification_count + 1
     else:
         print("✅ Answer accepted (or max retries). Moving to next question.")
         # Good answer OR max retries reached -> Move to next
