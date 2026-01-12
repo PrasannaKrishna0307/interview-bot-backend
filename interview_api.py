@@ -71,7 +71,7 @@ security = HTTPBearer()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "chrome-extension://fgndickcgoheijcbjcpicgjofcfcjkol",
+        "chrome-extension://jonnmcjmdjdjgpnbgpmjdcjcfccconml",
         "http://localhost:3000",
         "http://localhost:3001"
     ],
